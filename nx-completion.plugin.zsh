@@ -46,7 +46,7 @@ _nx_check_workspace_def() {
 _nx_workspace_def() {
   integer ret=1
   if [[ -f $tmp_cached_def ]]; then
-    echo $tmp_cached_def && ret=0
+    ret=0
   fi
   return ret
 }
@@ -54,9 +54,9 @@ _nx_workspace_def() {
 # Collect workspace projects
 _nx_workspace_projects() {
   integer ret=1
-  local def=$(_nx_workspace_def)
-  local -a projects=($(<$def | jq -r '.graph.nodes[] | .name'))
-  echo $projects && ret=0
+  if _nx_workspace_def; then
+    projects=($(jq -r '.graph.nodes[] | .name' $tmp_cached_def)) && ret=0
+  fi
   return ret
 }
 
@@ -66,20 +66,22 @@ _nx_workspace_projects() {
 _nx_list_projects() {
   [[ $PREFIX = -* ]] && return 1
   integer ret=1
-  local def=$(_nx_workspace_def)
-  local -a projects=($(_nx_workspace_projects))
-  # Autocomplete projects as an option$ (eg: nx run demo...).
-  _describe -t nx-projects "Nx projects" projects && ret=0
+  local -a projects
+  if _nx_workspace_projects; then
+    # Autocomplete projects as an option$ (eg: nx run demo...).
+    _describe -t nx-projects "Nx projects" projects && ret=0
+  fi
   return ret
 }
 
 _nx_list_targets() {
   [[ $PREFIX = -* ]] && return 1
   integer ret=1
-  local def=$(_nx_workspace_def)
-  local -a targets=($(<$def | jq -r '.graph.nodes[] | { name: .name, target: (.data.targets | keys[]) } | .name + "\\:" + .target'))
+  if _nx_workspace_def; then
+    local -a targets=($(jq -r '.graph.nodes[] | { name: .name, target: (.data.targets | keys[]) } | .name + "\\:" + .target' $tmp_cached_def)
 
-  _describe -t project-targets 'Project targets' targets && ret=0
+    _describe -t project-targets 'Project targets' targets && ret=0
+  fi
   return ret
 }
 
