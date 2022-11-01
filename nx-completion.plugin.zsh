@@ -1,7 +1,4 @@
-# @todo: Document.
-_nx_command() {
-  echo "${words[2]}"
-}
+#compdef nx
 
 # @todo: Document.
 _nx_arguments() {
@@ -17,7 +14,7 @@ _nx_caching_policy() {
 }
 
 # Check if at least one of w_defs are present in working dir.
-_check_workspace_def() {
+_nx_check_workspace_def() {
   integer ret=1
   local files=(
     "$PWD/angular.json"
@@ -46,7 +43,7 @@ _check_workspace_def() {
 
 # Read workspace definition from generated tmp file. 
 # Assumes _check_workspace_def get called before.
-_workspace_def() {
+_nx_workspace_def() {
   integer ret=1
   if [[ -f $tmp_cached_def ]]; then
     echo $tmp_cached_def && ret=0
@@ -55,9 +52,9 @@ _workspace_def() {
 }
 
 # Collect workspace projects
-_workspace_projects() {
+_nx_workspace_projects() {
   integer ret=1
-  local def=$(_workspace_def)
+  local def=$(_nx_workspace_def)
   local -a projects=($(<$def | jq -r '.graph.nodes[] | .name'))
   echo $projects && ret=0
   return ret
@@ -66,27 +63,27 @@ _workspace_projects() {
 # List projects within workspace definition file,
 # uses jq dependency to parse and manipulate JSON file
 # instead of using a dirty grep or sed.
-_list_projects() {
+_nx_list_projects() {
   [[ $PREFIX = -* ]] && return 1
   integer ret=1
-  local def=$(_workspace_def)
-  local -a projects=($(_workspace_projects))
+  local def=$(_nx_workspace_def)
+  local -a projects=($(_nx_workspace_projects))
   # Autocomplete projects as an option$ (eg: nx run demo...).
   _describe -t nx-projects "Nx projects" projects && ret=0
   return ret
 }
 
-_list_targets() {
+_nx_list_targets() {
   [[ $PREFIX = -* ]] && return 1
   integer ret=1
-  local def=$(_workspace_def)
+  local def=$(_nx_workspace_def)
   local -a targets=($(<$def | jq -r '.graph.nodes[] | { name: .name, target: (.data.targets | keys[]) } | .name + "\\:" + .target'))
 
   _describe -t project-targets 'Project targets' targets && ret=0
   return ret
 }
 
-_list_generators() {
+_nx_list_generators() {
   [[ $PREFIX = -* ]] && return 1
   integer ret=1
   
@@ -176,7 +173,7 @@ _nx_command() {
     "--nx-ignore-cycles[Ignore cycles in the task graph.]"
     "--parallel[Parallelize the command.]"
     "--all[All projects.]"
-    "--exclude[Exclude certain projects from being processed.]:projects:_list_projects"
+    "--exclude[Exclude certain projects from being processed.]:projects:_nx_list_projects"
     "--runner[This is the name of the tasks runner configured in nx.json.]:runner:"
     "--configuration[This is the configuration to use when performing tasks on projects.]:configuration:"
     "--verbose[Print additional error stack trace on failure.]"
@@ -236,15 +233,15 @@ _nx_command() {
         "--watch[Run build when files change.]" \
         "--webWorkerTsConfig[TypeScript configuration for Web Worker modules.]:file:_files" \
         "--skipNxCache[Rerun the tasks even when the results are available in the cache.]" \
-        ":project:_list_projects" && ret=0
+        ":project:_nx_list_projects" && ret=0
     ;;
     (dep-graph)
       _arguments $(_nx_arguments) \
         $opts_help \
         "--version[Show version number.]" \
         "--file[Output file (e.g. --file=output.json or --file=dep-graph.html).]:file:_files" \
-        "--focus[Use to show the dependency graph for a particular project and every node that is either an ancestor or a descendant.]:project:_list_projects" \
-        "--exclude[List of projects delimited by commas to exclude from the dependency graph.]:projects:_list_projects:" \
+        "--focus[Use to show the dependency graph for a particular project and every node that is either an ancestor or a descendant.]:project:_nx_list_projects" \
+        "--exclude[List of projects delimited by commas to exclude from the dependency graph.]:projects:_nx_list_projects:" \
         "--groupByFolder[Group projects by folder in dependency graph.]" \
         "--host[Bind the dep graph server to a specific ip address.]:host:_hosts" \
         "--port[Bind the dep graph server to a specific port.]:port" && ret=0
@@ -271,7 +268,7 @@ _nx_command() {
         "--tsConfig[The path of the Cypress tsconfig configuration json file.]:file:_files" \
         "--watch[Recompile and run tests when files change.]" \
         "--skipNxCache[Rerun the tasks even when the results are available in the cache.]" \
-        ":project:_list_projects" && ret=0
+        ":project:_nx_list_projects" && ret=0
     ;;
     (g|generate)
       _arguments $(_nx_arguments) \
@@ -281,7 +278,7 @@ _nx_command() {
         "--interactive[When false, disables interactive input prompts.]" \
         "(-d --dry-run)"{-d,--dry-run}"[When true, runs through and reports activity without writing out results.]" \
         "(-f --force)"{-f,--force}"[When true, forces overwriting of existing files.]" \
-        ":generator:_list_generators" && ret=0
+        ":generator:_nx_list_generators" && ret=0
     ;;
     (l|lint)
       _arguments $(_nx_arguments) \
@@ -334,7 +331,7 @@ _nx_command() {
         "--target[Task to run for affected projects.]:target:" \
         "--parallel[Parallelize the command.]" \
         "--maxParallel[Max number of parallel processes.]:count:" \
-        "--projects[Projects to run (comma delimited).]:projects:_list_projects" \
+        "--projects[Projects to run (comma delimited).]:projects:_nx_list_projects" \
         "--all[Run the target on all projects in the workspace.]" \
         "--runner[Override the tasks runner in nx.json.]:runner:" \
         "--skipNxCache[Rerun the tasks even when the results are available in the cache.]" \
@@ -347,7 +344,7 @@ _nx_command() {
       _arguments $(_nx_arguments) \
         $opts_help \
         "(-c --configuration)"{-c=,--configuration=}"[A named builder configuration.]:configuration:" \
-        ":target:_list_targets" && ret=0
+        ":target:_nx_list_targets" && ret=0
         # Because run command use the following pattern my-project:executor:configuration,
         # we are concatening these 3 arguments as a single one because no clue how to deal with this special separator,
         # maybe one day someone will contribute with the solution, who knows.
@@ -384,7 +381,7 @@ _nx_command() {
         "--vendorChunk[Use a separate bundle containing only vendor libraries.]" \
         "--verbose[Adds more details to output logging.]" \
         "--watch[Rebuild on change.]" \
-        ":project:_list_projects" && ret=0
+        ":project:_nx_list_projects" && ret=0
     ;;
     (t|test)
       _arguments $(_nx_arguments) \
@@ -424,17 +421,17 @@ _nx_command() {
         "--watch[Watch files for changes and rerun tests related to changed files. If you want to re-run all tests when a file has changed, use the --watchAll option (https://jestjs.io/docs/en/cli#watch).]" \
         "--watchAll[Watch files for changes and rerun all tests when something changes. If you want to re-run only the tests that depend on the changed files, use the --watch option. (https://jestjs.io/docs/en/cli#watchall)]" \
         "--skipNxCache[Rerun the tasks even when the results are available in the cache.]" \
-        ":project:_list_projects" && ret=0
+        ":project:_nx_list_projects" && ret=0
     ;;
   esac
 
   return ret
 }
 
-_nx_completion() {
+_nx() {
   # In case no workspace found in current workind dir,
   # suggest creating a new workspace.
-  _check_workspace_def
+  _nx_check_workspace_def
   if [[ $? -eq 1 ]] ; then
     local bold=$(tput bold)
     local normal=$(tput sgr0)
@@ -471,4 +468,4 @@ _nx_completion() {
 
   return ret
 }
-compdef _nx_completion nx
+compdef _nx nx
