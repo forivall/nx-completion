@@ -13,6 +13,15 @@ _nx_caching_policy() {
   (( $#oldp ))
 }
 
+_nx_mktemp() {
+  if (( $+commands[mktemp] )) then
+    mktemp --suffix=.json
+    return
+  fi
+  local cwd_id=$(echo $PWD | (command -v md5sum &> /dev/null && md5sum || md5 -r) | awk '{print $1}')
+  echo "/tmp/nx-completion-$cwd_id.json"
+}
+
 # Check if at least one of w_defs are present in working dir.
 _nx_check_workspace_def() {
   integer ret=1
@@ -33,9 +42,8 @@ _nx_check_workspace_def() {
   # To get all workspace projects and targets nx graph needs to be called to store the
   # data in a file.
   if [[ $ret -eq 0 ]]; then
-    local cwd_id=$(echo $PWD | (command -v md5sum &> /dev/null && md5sum || md5 -r) | awk '{print $1}')
-    tmp_cached_def="/tmp/nx-completion-$cwd_id.json"
-    nx graph --file="$tmp_cached_def" > /dev/null
+    _nx_tmp_cached_def=$(_nx_mktemp)
+    nx graph --file="$_nx_tmp_cached_def" > /dev/null
   fi
 
   return ret
@@ -45,7 +53,7 @@ _nx_check_workspace_def() {
 # Assumes _check_workspace_def get called before.
 _nx_workspace_def() {
   integer ret=1
-  if [[ -f $tmp_cached_def ]]; then
+  if [[ -f $_nx_tmp_cached_def ]]; then
     ret=0
   fi
   return ret
@@ -55,7 +63,7 @@ _nx_workspace_def() {
 _nx_workspace_projects() {
   integer ret=1
   if _nx_workspace_def; then
-    projects=($(jq -r '.graph.nodes[] | .name' $tmp_cached_def)) && ret=0
+    projects=($(jq -r '.graph.nodes[] | .name' $_nx_tmp_cached_def)) && ret=0
   fi
   return ret
 }
@@ -78,7 +86,7 @@ _nx_list_targets() {
   [[ $PREFIX = -* ]] && return 1
   integer ret=1
   if _nx_workspace_def; then
-    local -a targets=($(jq -r '.graph.nodes[] | { name: .name, target: (.data.targets | keys[]) } | .name + "\\:" + .target' $tmp_cached_def)
+    local -a targets=($(jq -r '.graph.nodes[] | { name: .name, target: (.data.targets | keys[]) } | .name + "\\:" + .target' $_nx_tmp_cached_def))
 
     _describe -t project-targets 'Project targets' targets && ret=0
   fi
