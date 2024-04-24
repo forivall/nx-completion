@@ -102,7 +102,7 @@ _list_generators() {
   local -a generators
   local -a plugins
   
-  plugins=(${(f)"$(nx list | awk '/Installed/,/Also available:/' | grep generators | awk -F ' ' '{print $1}')"})
+  plugins=(${(f)"$(nx list | awk '/Local workspace plugins|Installed/,/Also available:/' | grep generators | awk -F ' ' '{print $1}')"})
 
   for p in $plugins; do
     local -a pluginGenerators
