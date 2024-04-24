@@ -413,7 +413,7 @@ _list_generators() {
   # Try to get plugins list with error handling
   local plugins_output=$(nx list 2>/dev/null)
   if [[ $? -eq 0 && -n "$plugins_output" ]]; then
-    plugins=(${(f)"$(echo "$plugins_output" | awk '/Installed/,/Also available:/' | grep generators | awk -F ' ' '{print $1}')"})
+    plugins=(${(f)"$(echo "$plugins_output" | awk '/Local workspace plugins|Installed/,/Also available:/' | grep generators | awk -F ' ' '{print $1}')"})
   fi
 
   # If no plugins found, return gracefully
