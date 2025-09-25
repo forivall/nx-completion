@@ -58,6 +58,7 @@ _check_workspace_def() {
     "$PWD/workspace.json"
     "$PWD/nx.json"
   )
+  unset tmp_cached_def
 
   # return 1 if none of the files are present.
   for f in $files; do
@@ -88,33 +89,34 @@ _check_workspace_def() {
         fi
         nextdir=${dir:h}
       done
+    fi
 
-      if [[ -n "$candidateRoot" ]]; then
-        ret=0
-      fi
+    if [[ -n "$candidateRoot" ]]; then
+      ret=0
     fi
   fi
 
   # To get all workspace projects and targets nx graph needs to be called to store the
   # data in a file.
   if [[ $ret -eq 0 ]]; then
+    nx_completion_cwd_id=$candidateRoot
+    autoload -U regexp-replace
+    regexp-replace nx_completion_cwd_id '@' '-AT-'
+    regexp-replace nx_completion_cwd_id '/' '-SLASH-'
+    regexp-replace nx_completion_cwd_id ':' '-COLON-'
+    regexp-replace nx_completion_cwd_id '\|' '-PIPE-'
     # Check if Nx cached project graph exists first
     local nx_cached_graph="$candidateRoot/.nx/workspace-data/project-graph.json"
     if [[ -f "$nx_cached_graph" ]]; then
       tmp_cached_def="$nx_cached_graph"
     else
       # Generate new graph file if cached one doesn't exist
-      local cwd_id=$candidateRoot
-      autoload -U regexp-replace
-      regexp-replace cwd_id '@' '-AT-'
-      regexp-replace cwd_id '/' '-SLASH-'
-      regexp-replace cwd_id ':' '-COLON-'
-      regexp-replace cwd_id '\|' '-PIPE-'
-      tmp_cached_def="$TMPDIR/nx-completion-$cwd_id.json"
+      tmp_cached_def="$TMPDIR/nx-completion-$nx_completion_cwd_id.json"
       if () { setopt local_options extendedglob; [[ -z "$tmp_cached_def"(#qN.mm+1) ]] }; then
         nx graph --file="$tmp_cached_def" > /dev/null 2>&1
       fi
     fi
+    tmp_cached_def_pwd=$PWD
   fi
 
   return ret
@@ -126,7 +128,7 @@ _workspace_def() {
   integer ret=1
 
   # First check if tmp_cached_def is set and file exists
-  if [[ -n "$tmp_cached_def" && -f "$tmp_cached_def" ]]; then
+  if [[ -n "$tmp_cached_def" && "$tmp_cached_def_pwd" == "$PWD" && -f "$tmp_cached_def" ]]; then
     echo "$tmp_cached_def" && ret=0
     return ret
   fi
@@ -163,7 +165,7 @@ _get_nodes_path() {
 _get_workspace_items() {
   local item_type="$1" # "projects" or "targets" or "targets_full"
   integer ret=1
-  local cache_key="nx_workspace_${item_type}"
+  local cache_key="nx_workspace_${nx_completion_cwd_id}_${item_type}"
   local cache_policy
 
   # Set up cache policy
@@ -225,7 +227,7 @@ _get_workspace_items_array() {
   local item_type="$1" # "projects" or "targets" or "targets_full"
   local result_var="$2" # name of the result array variable
   integer ret=1
-  local cache_key="nx_workspace_${item_type}"
+  local cache_key="nx_workspace_${nx_completion_cwd_id}_${item_type}"
   local cache_policy
 
   # Set up cache policy
@@ -304,7 +306,7 @@ _complete_workspace_items() {
   [[ $PREFIX = -* ]] && return 1
   integer ret=1
 
-  local cache_key="nx_list_${item_type}"
+  local cache_key="nx_list_${nx_completion_cwd_id}_${item_type}"
   local cache_policy
 
   # Set up cache policy
@@ -403,14 +405,14 @@ _list_projects() {
   _complete_workspace_items "projects"
 }
 
-_list_targets() {
+_nx_list_targets() {
   _complete_workspace_items "targets"
 }
 
 _list_generators() {
   [[ $PREFIX = -* ]] && return 1
   integer ret=1
-  local cache_key="nx_list_generators"
+  local cache_key="nx_list_generators_${nx_completion_cwd_id}"
   local cache_policy
 
   # Set up cache policy
@@ -598,7 +600,7 @@ _nx_commands() {
 # Extract all unique executors from project graph
 _nx_get_executors() {
   integer ret=1
-  local cache_key="nx_executors"
+  local cache_key="nx_executors_${nx_completion_cwd_id}"
   local cache_policy
 
   # Set up cache policy
@@ -638,7 +640,7 @@ _nx_get_executors() {
 _nx_get_executor_options() {
   local executor="$1"
   integer ret=1
-  local cache_key="nx_executor_options_${executor//[^a-zA-Z0-9]/_}"
+  local cache_key="nx_executor_options_${nx_completion_cwd_id}_${executor//[^a-zA-Z0-9]/_}"
   local cache_policy
 
   # Set up cache policy
@@ -694,7 +696,7 @@ _nx_get_executor_options() {
 # Map common target names to likely executors for better completion
 _nx_get_target_executor() {
   local target="$1"
-  local cache_key="nx_target_executor_${target//[^a-zA-Z0-9]/_}"
+  local cache_key="nx_target_executor_${nx_completion_cwd_id}_${target//[^a-zA-Z0-9]/_}"
   local cache_policy
 
   # Set up cache policy
@@ -743,7 +745,7 @@ _nx_get_target_executor() {
 # Get dynamic options for common Nx commands based on executors
 _nx_get_dynamic_command_options() {
   local command="$1"
-  local cache_key="nx_dynamic_${command}_options"
+  local cache_key="nx_dynamic_${command}_options_${nx_completion_cwd_id}"
   local cache_policy
 
   # Set up cache policy
@@ -847,7 +849,7 @@ _nx_get_dynamic_command_options() {
 # Cache-aware wrapper for dynamic option parsing
 _nx_get_command_options() {
   local command="$1"
-  local cache_key="nx_${command}_options"
+  local cache_key="nx_${command}_options_${nx_completion_cwd_id}"
   local cache_policy
 
   # Set up cache policy
@@ -1253,14 +1255,14 @@ _nx_command() {
         _arguments $(_nx_arguments) \
           $opts_help \
           $run_opts \
-          ":target:_list_targets" && ret=0
+          ":target:_nx_list_targets" && ret=0
       else
         # Fallback to basic options if parsing fails
         _arguments $(_nx_arguments) \
           $opts_help \
           "(-c --configuration)"{-c=,--configuration=}"[A named builder configuration.]:configuration:" \
           "--verbose[Print additional error stack trace on failure.]" \
-          ":target:_list_targets" && ret=0
+          ":target:_nx_list_targets" && ret=0
       fi
       # Because run command use the following pattern my-project:executor:configuration,
       # we are concatening these 3 arguments as a single one because no clue how to deal with this special separator,
