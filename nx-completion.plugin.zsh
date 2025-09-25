@@ -52,6 +52,7 @@ zstyle ':completion:*:*:nx:*' list-separator --
 # Check if at least one of w_defs are present in working dir.
 _check_workspace_def() {
   integer ret=1
+  local candidateRoot
   local files=(
     "$PWD/angular.json"
     "$PWD/workspace.json"
@@ -61,24 +62,58 @@ _check_workspace_def() {
   # return 1 if none of the files are present.
   for f in $files; do
     if [[ -f $f ]]; then
+      candidateRoot=$PWD
       ret=0
       break
     fi
   done
 
+  if [[ $ret -ne 0 ]]; then
+    local dir nextdir
+    if [[ -n "$NX_WORKSPACE_ROOT_PATH" ]]; then
+      candidateRoot="$NX_WORKSPACE_ROOT_PATH"
+    else
+      nextdir=${PWD}
+      while [[ ret -ne 0 && $dir != $nextdir ]]; do
+        dir=$nextdir
+        for f in $dir/nx{.json,,.bat}; do
+          if [[ -f $f ]]; then
+            candidateRoot=$dir
+            ret=0
+            break
+          fi
+        done
+        if [[ -f $dir/node_modules/nx/package.json ]]; then
+          candidateRoot=$dir
+        fi
+        nextdir=${dir:h}
+      done
+
+      if [[ -n "$candidateRoot" ]]; then
+        ret=0
+      fi
+    fi
+  fi
+
   # To get all workspace projects and targets nx graph needs to be called to store the
   # data in a file.
   if [[ $ret -eq 0 ]]; then
-    local cwd_id=$(echo $PWD | (command -v md5sum &> /dev/null && md5sum || md5 -r) | awk '{print $1}')
-    tmp_cached_def="/tmp/nx-completion-$cwd_id.json"
-
     # Check if Nx cached project graph exists first
-    local nx_cached_graph="$PWD/.nx/workspace-data/project-graph.json"
+    local nx_cached_graph="$candidateRoot/.nx/workspace-data/project-graph.json"
     if [[ -f "$nx_cached_graph" ]]; then
       tmp_cached_def="$nx_cached_graph"
     else
       # Generate new graph file if cached one doesn't exist
-      nx graph --file="$tmp_cached_def" > /dev/null 2>&1
+      local cwd_id=$candidateRoot
+      autoload -U regexp-replace
+      regexp-replace cwd_id '@' '-AT-'
+      regexp-replace cwd_id '/' '-SLASH-'
+      regexp-replace cwd_id ':' '-COLON-'
+      regexp-replace cwd_id '\|' '-PIPE-'
+      tmp_cached_def="$TMPDIR/nx-completion-$cwd_id.json"
+      if () { setopt local_options extendedglob; [[ -z "$tmp_cached_def"(#qN.mm+1) ]] }; then
+        nx graph --file="$tmp_cached_def" > /dev/null 2>&1
+      fi
     fi
   fi
 
