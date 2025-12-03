@@ -423,7 +423,7 @@ _list_generators() {
 
   # Check if we have cached generators and they're still valid
   if ( [[ ${(P)+cache_key} -eq 1 ]] && ! _cache_invalid "$cache_key" ); then
-    local -a cached_generators=("${(P)cache_key[@]}")
+    local -a cached_generators=("${(P@)cache_key}")
 
     # Filter cached results based on PREFIX if provided
     local -a filtered_generators=()
@@ -440,7 +440,9 @@ _list_generators() {
       filtered_generators=(${cached_generators[1,$NX_MAX_RESULTS]})
     fi
 
-    _describe -t nx-generators "Nx generators" filtered_generators && ret=0
+    local -a generators_completion=()
+    generators_completion=( ${filtered_generators/:/\\:} )
+    _describe -t nx-generators "Nx generators" generators_completion && ret=0
     return ret
   fi
 
@@ -448,7 +450,7 @@ _list_generators() {
   local -a plugins=()
 
   # Try to get plugins list with error handling
-  local plugins_output=$(nx list 2>/dev/null)
+  local plugins_output="$(nx list 2>/dev/null)"
   if [[ $? -eq 0 && -n "$plugins_output" ]]; then
     plugins=(${(f)"$(echo "$plugins_output" | awk '/Local workspace plugins|Installed/,/Also available:/' | grep generators | awk -F ' ' '{print $1}')"})
   fi
@@ -498,7 +500,9 @@ _list_generators() {
   fi
 
   # Run completion.
-  _describe -t nx-generators "Nx generators" generators && ret=0
+  local -a generators_completion=()
+  generators_completion=( ${filtered_generators/:/\\:} )
+  _describe -t nx-generators "Nx generators" generators_completion && ret=0
   return ret
 }
 
