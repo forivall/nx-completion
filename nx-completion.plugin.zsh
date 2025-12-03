@@ -101,10 +101,12 @@ _check_workspace_def() {
   if [[ $ret -eq 0 ]]; then
     nx_completion_cwd_id=$candidateRoot
     autoload -U regexp-replace
-    regexp-replace nx_completion_cwd_id '@' '-AT-'
-    regexp-replace nx_completion_cwd_id '/' '-SLASH-'
-    regexp-replace nx_completion_cwd_id ':' '-COLON-'
-    regexp-replace nx_completion_cwd_id '\|' '-PIPE-'
+    regexp-replace nx_completion_cwd_id '@' '_AT_'
+    regexp-replace nx_completion_cwd_id '/' '_SLASH_'
+    regexp-replace nx_completion_cwd_id ':' '_COLON_'
+    regexp-replace nx_completion_cwd_id '\|' '_PIPE_'
+    regexp-replace nx_completion_cwd_id '\.' '_DOT_'
+    regexp-replace nx_completion_cwd_id '-' '_DASH_'
     # Check if Nx cached project graph exists first
     local nx_cached_graph="$candidateRoot/.nx/workspace-data/project-graph.json"
     if [[ -f "$nx_cached_graph" ]]; then
