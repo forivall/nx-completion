@@ -99,6 +99,7 @@ _check_workspace_def() {
   # To get all workspace projects and targets nx graph needs to be called to store the
   # data in a file.
   if [[ $ret -eq 0 ]]; then
+    nx_completion_cwd=$candidateRoot
     nx_completion_cwd_id=$candidateRoot
     autoload -U regexp-replace
     regexp-replace nx_completion_cwd_id '@' '_AT_'
@@ -423,88 +424,105 @@ _list_generators() {
     zstyle ":completion:${curcontext}:" cache-policy _nx_caching_policy
   fi
 
+  local -a generators
   # Check if we have cached generators and they're still valid
   if ( [[ ${(P)+cache_key} -eq 1 ]] && ! _cache_invalid "$cache_key" ); then
-    local -a cached_generators=("${(P@)cache_key}")
+    generators=("${(P@)cache_key}")
+  else
+    local -a plugins=()
+    generators=()
 
-    # Filter cached results based on PREFIX if provided
-    local -a filtered_generators=()
-    if [[ -n "$PREFIX" ]]; then
-      for generator in $cached_generators; do
-        if [[ "$generator" == ${PREFIX}* ]]; then
-          filtered_generators+=("$generator")
-          if [[ ${#filtered_generators} -ge $NX_MAX_RESULTS ]]; then
-            break
-          fi
+    # Try to get plugins list with error handling
+    local plugins_output="$(nx list 2>/dev/null)"
+    if [[ $? -eq 0 && -n "$plugins_output" ]]; then
+      plugins=(${(f)"$(echo "$plugins_output" | awk '/Local workspace plugins|Installed/,/Also available:/' | grep generators | awk -F ' ' '{print $1}')"})
+    fi
+
+    # If no plugins found, return gracefully
+    if [[ ${#plugins} -eq 0 ]]; then
+      return 1
+    fi
+
+    for p in $plugins; do
+      local -a pluginGenerators=()
+      # Try to get generators for this plugin with error handling
+      local generators_output=$(nx list "$p" 2>/dev/null)
+      if [[ $? -eq 0 && -n "$generators_output" ]]; then
+        pluginGenerators=(${(f)"$(echo "$generators_output" | awk '/GENERATORS/,/EXECUTORS/' | grep ' : ' | awk -F " : " '{ print $1}' | awk '{$1=$1};1')"})
+      fi
+
+      for g in $pluginGenerators; do
+        # Format generator as plugin:generator
+        local generator="$p:$g"
+        generators+=("$generator")
+        # Limit total generators to prevent overwhelming the user
+        if [[ ${#generators} -ge $NX_MAX_RESULTS ]]; then
+          break 2
         fi
       done
-    else
-      filtered_generators=(${cached_generators[1,$NX_MAX_RESULTS]})
-    fi
-
-    local -a generators_completion=()
-    generators_completion=( ${filtered_generators/:/\\:} )
-    _describe -t nx-generators "Nx generators" generators_completion && ret=0
-    return ret
-  fi
-
-  local -a generators=()
-  local -a plugins=()
-
-  # Try to get plugins list with error handling
-  local plugins_output="$(nx list 2>/dev/null)"
-  if [[ $? -eq 0 && -n "$plugins_output" ]]; then
-    plugins=(${(f)"$(echo "$plugins_output" | awk '/Local workspace plugins|Installed/,/Also available:/' | grep generators | awk -F ' ' '{print $1}')"})
-  fi
-
-  # If no plugins found, return gracefully
-  if [[ ${#plugins} -eq 0 ]]; then
-    return 1
-  fi
-
-  for p in $plugins; do
-    local -a pluginGenerators=()
-    # Try to get generators for this plugin with error handling
-    local generators_output=$(nx list "$p" 2>/dev/null)
-    if [[ $? -eq 0 && -n "$generators_output" ]]; then
-      pluginGenerators=(${(f)"$(echo "$generators_output" | awk '/GENERATORS/,/EXECUTORS/' | grep ' : ' | awk -F " : " '{ print $1}' | awk '{$1=$1};1')"})
-    fi
-
-    for g in $pluginGenerators; do
-      # Format generator as plugin:generator
-      local generator="$p:$g"
-      generators+=("$generator")
-      # Limit total generators to prevent overwhelming the user
-      if [[ ${#generators} -ge $NX_MAX_RESULTS ]]; then
-        break 2
-      fi
     done
-  done
 
-  # Cache all generators for future use
-  if [[ ${#generators} -gt 0 ]]; then
-    eval "${cache_key}=(\"\${generators[@]}\")"
-    _store_cache "$cache_key" "${cache_key}"
+    # Cache all generators for future use
+    if [[ ${#generators} -gt 0 ]]; then
+      eval "${cache_key}=(\"\${generators[@]}\")"
+      _store_cache "$cache_key" "${cache_key}"
+    fi
   fi
 
   # Filter generators based on PREFIX if provided
-  local -a filtered_generators=()
-  if [[ -n "$PREFIX" ]]; then
-    for generator in $generators; do
-      if [[ "$generator" == ${PREFIX}* ]]; then
-        filtered_generators+=("$generator")
-        if [[ ${#filtered_generators} -ge $NX_MAX_RESULTS ]]; then
-          break
-        fi
-      fi
-    done
-    generators=($filtered_generators)
-  fi
+  typeset -A filtered_generators=()
+  for generator in $generators; do
+    if [[ ${#filtered_generators} -ge $NX_MAX_RESULTS ]]; then
+      break
+    fi
+    if [[ "$generator" == ${PREFIX}* ]]; then
+      filtered_generators[$generator]+=""
+    fi
+    if [[ "$generator" == *:${PREFIX}* ]]; then
+      filtered_generators[${generator#*:}]+=",${generator%:*}"
+    fi
+  done
+  __nx_completion_generators=( ${(kv)filtered_generators} )
 
   # Run completion.
+  zstyle ":completion:${curcontext}:*" group-name ''
   local -a generators_completion=()
-  generators_completion=( ${filtered_generators/:/\\:} )
-  _describe -t nx-generators "Nx generators" generators_completion && ret=0
+
+  local -a group_generators
+  local -a nx_descriptions=()
+  local -a shorthand_generators=()
+
+  for group in ${(ou)filtered_generators}; do
+    if [[ -z $group ]]; then
+      continue
+    fi
+    group_generators=()
+    for generator in ${(k)filtered_generators}; do
+      generator_group=${filtered_generators[$generator]}
+      if [[ $generator_group = $group ]]; then
+        group_generators+=( $generator )
+      fi
+    done
+    if [[ ${#group_generators[@]} -gt 1 ]]; then
+      generators_completion=( ${group_generators/:/\\:} )
+      _describe -t "${group#,}" "${group#,} generators" generators_completion
+    elif [[ ${#group_generators[@]} -eq 1 ]]; then
+      shorthand_generators+=( "$group_generators:${group#,}" )
+    fi
+  done
+  if [[ ${#shorthand_generators[@]} -gt 1 ]]; then
+    _describe -t nx-shorthand-generators "Shorthand generators" shorthand_generators
+  fi
+  group_generators=()
+  for generator in ${(k)filtered_generators}; do
+    generator_group=${filtered_generators[$generator]}
+    if [[ -z $generator_group ]]; then
+      group_generators+=( $generator )
+    fi
+  done
+  generators_completion=( ${group_generators/:/\\:} )
+  _describe -t nx-generators "All generators" generators_completion "${nx_descriptions[@]}" && ret=0
+  # generators_completion=( ${(*k)filtered_generators/(#m)*/${MATCH/:/\\:}:${filtered_generators[$MATCH]#,}} )
   return ret
 }
 
