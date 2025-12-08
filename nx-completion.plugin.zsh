@@ -432,6 +432,26 @@ _list_generators() {
     local -a plugins=()
     generators=()
 
+    # Try to get plugins list quickly
+    local node_e_output="$(node -e "(async () => {
+      const pg = require('nx/src/project-graph/project-graph');
+      const projectGraph = await pg.createProjectGraphAsync({ exitOnError: true });
+      const projects = pg.readProjectsConfigurationFromProjectGraph(projectGraph);
+      const nxJson = require('nx/src/config/nx-json').readNxJson();
+      const { workspaceRoot } = require('nx/src/utils/workspace-root');
+      const plg = require('nx/src/utils/plugins');
+      const localPlugins = await plg.getLocalWorkspacePlugins(projects, nxJson);
+      const installedPlugins = await plg.getInstalledPluginsAndCapabilities(workspaceRoot, projects.projects);
+      console.log([
+        ...localPlugins,
+        ...installedPlugins,
+      ].flatMap(([n, p]) => Object.keys(p.generators ?? {}).map(g=>n+':'+g)).join('\n'));
+    })();
+    ")"
+    if [[ $? -eq 0 && -n "$node_e_output" ]]; then
+      generators=( ${(f)node_e_output} )
+    else
+
     # Try to get plugins list with error handling
     local plugins_output="$(nx list 2>/dev/null)"
     if [[ $? -eq 0 && -n "$plugins_output" ]]; then
@@ -455,12 +475,9 @@ _list_generators() {
         # Format generator as plugin:generator
         local generator="$p:$g"
         generators+=("$generator")
-        # Limit total generators to prevent overwhelming the user
-        if [[ ${#generators} -ge $NX_MAX_RESULTS ]]; then
-          break 2
-        fi
       done
     done
+    fi
 
     # Cache all generators for future use
     if [[ ${#generators} -gt 0 ]]; then
@@ -510,7 +527,7 @@ _list_generators() {
       shorthand_generators+=( "$group_generators:${group#,}" )
     fi
   done
-  if [[ ${#shorthand_generators[@]} -gt 1 ]]; then
+  if [[ ${#shorthand_generators[@]} -gt 0 ]]; then
     _describe -t nx-shorthand-generators "Shorthand generators" shorthand_generators
   fi
   group_generators=()
