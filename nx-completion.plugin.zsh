@@ -446,7 +446,7 @@ _list_generators() {
         ...localPlugins,
         ...installedPlugins,
       ].flatMap(([n, p]) => Object.keys(p.generators ?? {}).map(g=>n+':'+g)).join('\n'));
-    })();
+    })().catch(() => { process.exitCode = 1 }).then(() => { process.exit() });
     ")"
     if [[ $? -eq 0 && -n "$node_e_output" ]]; then
       generators=( ${(f)node_e_output} )
@@ -923,7 +923,7 @@ _nx_parse_command_options() {
   local -a parsed_options=()
 
   # Get help for the specific command
-  local help_output=$(nx "$command" --help 2>/dev/null)
+  local help_output=$(NX_DAEMON=false nx "$command" --help 2>/dev/null)
   if [[ $? -eq 0 && -n "$help_output" ]]; then
     # Extract options section
     local options_section=$(echo "$help_output" | awk '/^Options:$/,/^$|^[A-Z]/ {print}' | grep -E '^\s+(-|--)')
