@@ -561,7 +561,7 @@ _nx_commands() {
     _nx_subcommands=()
 
     # Parse nx --help output to extract commands and descriptions
-    local help_output=$(nx --help 2>/dev/null)
+    local help_output=$(nx --help 2>&1 )
     if [[ $? -eq 0 && -n "$help_output" ]]; then
       # Extract commands section and parse each line
       local commands_section=$(echo "$help_output" | awk '/^Commands:$/,/^Options:$/ {print}' | grep -E '^\s+nx ')
@@ -631,7 +631,11 @@ _nx_commands() {
     (( $#_nx_subcommands > 2 )) && _store_cache nx_subcommands _nx_subcommands
   fi
 
-  local _nx_subcommands_and_targets=($(_nx_workspace_targets) $_nx_subcommands)
+  local -a _nx_targets
+  _get_workspace_items_array "targets" _nx_targets
+  _nx_targets=( ${(*)_nx_targets/(#m)*/${MATCH//:/\\:}} )
+
+  local _nx_subcommands_and_targets=(${_nx_targets[@]} ${_nx_subcommands[@]})
 
   # Run completion.
   _describe -t nx-commands "Nx commands" _nx_subcommands_and_targets && ret=0
