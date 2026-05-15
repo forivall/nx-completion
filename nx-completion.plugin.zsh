@@ -37,7 +37,7 @@ _nx_caching_policy() {
 }
 
 # Global configuration for maximum number of completion results
-typeset -g NX_MAX_RESULTS=30
+typeset -g NX_MAX_RESULTS=10000
 
 # Set up zsh completion styles for nx to ensure menu completion
 zstyle ':completion:*:*:nx:*' menu yes select
@@ -561,7 +561,7 @@ _nx_commands() {
     _nx_subcommands=()
 
     # Parse nx --help output to extract commands and descriptions
-    local help_output=$(nx --help 2>&1 )
+    local help_output=$(NX_DAEMON=false nx --help 2>&1 )
     if [[ $? -eq 0 && -n "$help_output" ]]; then
       # Extract commands section and parse each line
       local commands_section=$(echo "$help_output" | awk '/^Commands:$/,/^Options:$/ {print}' | grep -E '^\s+nx ')
@@ -930,7 +930,7 @@ _nx_parse_command_options() {
   local help_output=$(NX_DAEMON=false nx "$command" --help 2>/dev/null)
   if [[ $? -eq 0 && -n "$help_output" ]]; then
     # Extract options section
-    local options_section=$(echo "$help_output" | awk '/^Options:$/,/^$|^[A-Z]/ {print}' | grep -E '^\s+(-|--)')
+    local options_section=$(echo "$help_output" | awk '/^Options:$/ {show=1;print;next} show==1{print} /^$|^[A-Z]/ {show=0}' | grep -E '^\s+(-|--)')
 
     while IFS= read -r line; do
       if [[ -n "$line" ]]; then
@@ -947,16 +947,16 @@ _nx_parse_command_options() {
         local desc=""
 
         # Extract options and description
-        if [[ "$line" =~ ^(-[a-zA-Z]),?\s+(--[a-zA-Z0-9-]+)\s+(.*)$ ]]; then
+        if [[ "$line" =~ ^(-[a-zA-Z]),?[[:space:]]+(--[a-zA-Z0-9-]+)[[:space:]]+(.*)$ ]]; then
           # Format: -c, --configuration Description
           short_opt="${match[1]}"
           long_opt="${match[2]}"
           desc="${match[3]}"
-        elif [[ "$line" =~ ^(--[a-zA-Z0-9-]+)\s+(.*)$ ]]; then
+        elif [[ "$line" =~ ^(--[a-zA-Z0-9-]+)[[:space:]]+(.*)$ ]]; then
           # Format: --option Description
           long_opt="${match[1]}"
           desc="${match[2]}"
-        elif [[ "$line" =~ ^(-[a-zA-Z])\s+(.*)$ ]]; then
+        elif [[ "$line" =~ ^(-[a-zA-Z])[[:space:]]+(.*)$ ]]; then
           # Format: -o Description
           short_opt="${match[1]}"
           desc="${match[2]}"
@@ -969,11 +969,11 @@ _nx_parse_command_options() {
 
         # Add to parsed options
         if [[ -n "$short_opt" && -n "$long_opt" ]]; then
-          parsed_options+=("($short_opt $long_opt)"{$short_opt,$long_opt}"[$desc]")
+          parsed_options+=("($short_opt $long_opt)"{$short_opt,${long_opt}}"[$desc]")
         elif [[ -n "$long_opt" ]]; then
-          parsed_options+=("$long_opt[$desc]")
+          parsed_options+=("${long_opt}[$desc]")
         elif [[ -n "$short_opt" ]]; then
-          parsed_options+=("$short_opt[$desc]")
+          parsed_options+=("${short_opt}[$desc]")
         fi
       fi
     done <<< "$options_section"
@@ -1391,7 +1391,7 @@ _nx_command() {
         # Fallback to static options if parsing fails
         _arguments $(_nx_arguments) \
           $opts_help \
-          "(-b --bail)"{-o,--open}"[Exit the test suite immediately after n number of failing tests (https://jestjs.io/docs/en/cli#bail).]" \
+          "(-b --bail)"{-b,--bail}"[Exit the test suite immediately after n number of failing tests (https://jestjs.io/docs/en/cli#bail).]" \
           "--ci[Whether to run Jest in continuous integration (CI) mode. This option is on by default in most popular CI environments. It will prevent snapshots from being written unless explicitly requested (https://jestjs.io/docs/en/cli#ci).]" \
           "--clearCache[Deletes the Jest cache directory and then exits without running tests. Will delete Jest's default cache directory. Note: clearing the cache will reduce performance.]" \
           "(-b --bail)"{-o,--open}"[Exit the test suite immediately after n number of failing tests (https://jestjs.io/docs/en/cli#bail).]" \
