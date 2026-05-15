@@ -323,6 +323,8 @@ _complete_workspace_items() {
 
   if [[ "$item_type" == "projects" ]]; then
     _get_workspace_items_array "projects" all_items
+  elif [[ "$item_type" == "target_names" ]]; then
+    _get_workspace_items_array "targets" all_items
   else
     # For targets, we need project:target format for _list_targets
     if ( [[ ${(P)+cache_key} -eq 1 ]] && ! _cache_invalid "$cache_key" ); then
@@ -410,6 +412,10 @@ _list_projects() {
 
 _nx_list_targets() {
   _complete_workspace_items "targets"
+}
+
+_nx_list_target_names() {
+  _complete_workspace_items "target_names"
 }
 
 _list_generators() {
@@ -1369,13 +1375,96 @@ _nx_command() {
         _arguments $(_nx_arguments) \
           $opts_help \
           $show_opts \
-          ":object:(projects)" && ret=0
+          ":object:->subcommands" \
+          "*:: :->subcommand" && ret=0
       else
         # Fallback to basic options if parsing fails
         _arguments $(_nx_arguments) \
           $opts_help \
           "--verbose[Print additional error stack trace on failure.]" \
-          ":object:(projects)" && ret=0
+          ":object:->subcommands" & ret=0
+      fi
+      if [[ $state == subcommands ]]; then
+        local cache_policy
+
+        zstyle -s ":completion:${curcontext}:" cache-policy cache_policy
+        if [[ -z "$cache_policy" ]]; then
+          zstyle ":completion:${curcontext}:" cache-policy _nx_caching_policy
+        fi
+        if ( [[ ${+_nx_show_subcommands} -eq 0 ]] || _cache_invalid nx_show_subcommands ) \
+          && ! _retrieve_cache nx_show_subcommands
+        then
+          # Dynamically parse nx show --help to get commands
+          _nx_show_subcommands=()
+
+          # Parse nx --help output to extract commands and descriptions
+          local help_output=$(NX_DAEMON=false nx show --help 2>&1 )
+          if [[ $? -eq 0 && -n "$help_output" ]]; then
+            # Extract commands section and parse each line
+            local commands_section=$(echo "$help_output" | awk '/^Commands:$/,/^Options:$/ {print}' | grep -E '^\s+nx ')
+
+            while IFS= read -r line; do
+              if [[ -n "$line" ]]; then
+                # Extract command name and description
+                local cmd_line=$(echo "$line" | sed 's/^\s*nx show\s*//' | sed 's/\s\s\+/ /')
+                local cmd_name=$(echo "$cmd_line" | awk '{print $1}' | sed 's/\[.*\]//')
+                local cmd_desc=$(echo "$cmd_line" | sed 's/^[^[:space:]]*\s*//' | sed 's/<[^>]*>\s*//')
+
+                # Escape colons in descriptions and add to array
+                cmd_desc=$(echo "$cmd_desc" | sed 's/:/\\:/g')
+                cmd_name=$(echo "$cmd_name" | sed 's/:/\\:/g')
+
+                if [[ -n "$cmd_name" && -n "$cmd_desc" ]]; then
+                  _nx_show_subcommands+=("$cmd_name:$cmd_desc")
+                fi
+              fi
+            done <<< "$commands_section"
+          fi
+
+          # Fallback to basic commands if parsing failed
+          if [[ ${#_nx_show_subcommands} -eq 0 ]]; then
+            _nx_show_subcommands=(
+              'project:Show a list of projects _in the workspace.'
+              'projects:Shows resolved project configuration for a given project.'
+            )
+          fi
+          (( $#_nx_show_subcommands >= 1 )) && _store_cache nx_show_subcommands _nx_show_subcommands
+        fi
+        # set -x
+        _describe -t objects 'Nx Show commands' _nx_show_subcommands
+      elif [[ $state == subcommand ]]; then
+        case "$words[1]" in
+          project)
+            local -a show_project_opts; _nx_get_command_options show_project_opts show project
+            if [[ ${#show_project_opts} -gt 0 ]]; then
+              _arguments $(_nx_arguments) \
+                $opts_help \
+                $show_project_opts \
+                ":project:_list_projects" && ret=0
+            else
+              # Fallback to basic options if parsing fails
+              _arguments $(_nx_arguments) \
+                $opts_help \
+                "--verbose[Print additional error stack trace on failure.]" \
+                ":project:_list_projects" && ret=0
+            fi
+            ;;
+          projects)
+            local -a show_projects_opts; _nx_get_command_options show_projects_opts show projects
+            if [[ ${#show_projects_opts} -gt 0 ]]; then
+              _arguments $(_nx_arguments) \
+                $opts_help \
+                "(-t --withTarget)"{-t,--withTarget}":target:_nx_list_target_names" \
+                $show_projects_opts && ret=0
+            else
+              # Fallback to basic options if parsing fails
+              _arguments $(_nx_arguments) \
+                $opts_help \
+                "(-t --withTarget)"{-t,--withTarget}"[show only projects with a specific target]:target:_nx_list_target_names"
+                "--verbose[Print additional error stack trace on failure.]" && ret=0
+            fi
+            ;;
+        esac
       fi
     ;;
     (t|test)
