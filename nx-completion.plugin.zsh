@@ -893,8 +893,9 @@ _nx_get_dynamic_command_options() {
 
 # Cache-aware wrapper for dynamic option parsing
 _nx_get_command_options() {
-  local command="$1"
-  local cache_key="nx_${command}_options_${nx_completion_cwd_id}"
+  local out="$1"; shift
+  local -a command=("$@")
+  local cache_key="nx_${(j:_:)command}_options_${nx_completion_cwd_id}"
   local cache_policy
 
   # Set up cache policy
@@ -905,12 +906,13 @@ _nx_get_command_options() {
 
   # Check if we have cached options and they're still valid
   if ( [[ ${(P)+cache_key} -eq 1 ]] && ! _cache_invalid "$cache_key" ); then
-    echo "${(P)cache_key[@]}"
+    eval "${out}=(\${${cache_key}[@]})"
     return 0
   fi
 
   # Parse options dynamically
-  local -a options=($(_nx_parse_command_options "$command"))
+  local -a parsed=(${(z)"$(_nx_parse_command_options "$command[@]")"})
+  local -a options=(${(Q)parsed[@]})
 
   # Cache the results if we got any
   if [[ ${#options} -gt 0 ]]; then
@@ -918,16 +920,16 @@ _nx_get_command_options() {
     _store_cache "$cache_key" "${cache_key}"
   fi
 
-  echo "${options[@]}"
+  eval "${out}=(\"\${options[@]}\")"
 }
 
 # Parse command-specific options from nx [command] --help
 _nx_parse_command_options() {
-  local command="$1"
+  local -a command=("$@")
   local -a parsed_options=()
 
   # Get help for the specific command
-  local help_output=$(NX_DAEMON=false nx "$command" --help 2>/dev/null)
+  local help_output=$(NX_DAEMON=false nx "$command[@]" --help 2>/dev/null)
   if [[ $? -eq 0 && -n "$help_output" ]]; then
     # Extract options section
     local options_section=$(echo "$help_output" | awk '/^Options:$/ {show=1;print;next} show==1{print} /^$|^[A-Z]/ {show=0}' | grep -E '^\s+(-|--)')
@@ -964,7 +966,7 @@ _nx_parse_command_options() {
 
         # Clean up description: remove type info in brackets, escape colons
         if [[ -n "$desc" ]]; then
-          desc=$(echo "$desc" | sed 's/\[boolean\]$//' | sed 's/\[string\]$//' | sed 's/\[number\]$//' | sed 's/:/\\:/g' | sed 's/\s*$//')
+          desc="$(echo "$desc" | sed -E 's/\s*\[(default|choices): [^]]+\]$//' | sed 's/\[boolean\]$//' | sed 's/\[string\]$//' | sed 's/\[number\]$//' | sed 's/:/\\:/g' | sed 's/\s*$//' | sed 's/]/\\]/')"
         fi
 
         # Add to parsed options
@@ -1056,7 +1058,7 @@ _nx_parse_command_options() {
     parsed_options=(${parsed_options[1,$max_total_opts]})
   fi
 
-  echo "${parsed_options[@]}"
+  echo "${(q)parsed_options[@]}"
 }
 
 # Safe wrapper for _list_targets that prevents terminal crashes
@@ -1137,7 +1139,7 @@ _nx_command() {
     ;;
     (b|build)
       # Use dynamic parsing combined with workspace executor options
-      local -a build_opts=($(_nx_get_command_options "build"))
+      local -a build_opts; _nx_get_command_options build_opts "build"
       local -a workspace_opts=($(_nx_get_dynamic_command_options "build"))
       local -a all_opts=($build_opts $workspace_opts)
 
@@ -1157,7 +1159,7 @@ _nx_command() {
     ;;
     (dep-graph|graph)
       # Use dynamic parsing for graph command
-      local -a graph_opts=($(_nx_get_command_options "graph"))
+      local -a graph_opts; _nx_get_command_options graph_opts "graph"
       if [[ ${#graph_opts} -gt 0 ]]; then
         _arguments $(_nx_arguments) \
           $opts_help \
@@ -1173,7 +1175,7 @@ _nx_command() {
     ;;
     (e|e2e)
       # Use dynamic parsing combined with workspace executor options
-      local -a e2e_opts=($(_nx_get_command_options "e2e"))
+      local -a e2e_opts; _nx_get_command_options e2e_opts "e2e"
       local -a workspace_opts=($(_nx_get_dynamic_command_options "e2e"))
       local -a all_opts=($e2e_opts $workspace_opts)
 
@@ -1193,7 +1195,7 @@ _nx_command() {
     ;;
     (g|generate)
       # Use dynamic option parsing for generate command
-      local -a generate_opts=($(_nx_get_command_options "generate"))
+      local -a generate_opts; _nx_get_command_options generate_opts "generate"
       if [[ ${#generate_opts} -gt 0 ]]; then
         _arguments $(_nx_arguments) \
           $opts_help \
@@ -1213,7 +1215,7 @@ _nx_command() {
     ;;
     (l|lint)
       # Use dynamic parsing combined with workspace executor options
-      local -a lint_opts=($(_nx_get_command_options "lint"))
+      local -a lint_opts; _nx_get_command_options lint_opts "lint"
       local -a workspace_opts=($(_nx_get_dynamic_command_options "lint"))
       local -a all_opts=($lint_opts $workspace_opts)
 
@@ -1234,7 +1236,7 @@ _nx_command() {
     ;;
     (migrate)
       # Use dynamic parsing for migrate command
-      local -a migrate_opts=($(_nx_get_command_options "migrate"))
+      local -a migrate_opts; _nx_get_command_options migrate_opts "migrate"
       if [[ ${#migrate_opts} -gt 0 ]]; then
         _arguments $(_nx_arguments) \
           $opts_help \
@@ -1250,7 +1252,7 @@ _nx_command() {
     ;;
     (n|new)
       # Use dynamic parsing for new command
-      local -a new_opts=($(_nx_get_command_options "new"))
+      local -a new_opts; _nx_get_command_options new_opts "new"
       if [[ ${#new_opts} -gt 0 ]]; then
         _arguments $(_nx_arguments) \
           $opts_help \
@@ -1268,7 +1270,7 @@ _nx_command() {
     ;;
     (run-many)
       # Use dynamic option parsing for run-many command
-      local -a run_many_opts=($(_nx_get_command_options "run-many"))
+      local -a run_many_opts; _nx_get_command_options run_many_opts "run-many"
       if [[ ${#run_many_opts} -gt 0 ]]; then
         _arguments $(_nx_arguments) \
           $opts_help \
@@ -1295,7 +1297,7 @@ _nx_command() {
     ;;
     (run|run-one)
       # Use dynamic parsing for run command
-      local -a run_opts=($(_nx_get_command_options "run"))
+      local -a run_opts; _nx_get_command_options run_opts "run"
       if [[ ${#run_opts} -gt 0 ]]; then
         _arguments $(_nx_arguments) \
           $opts_help \
@@ -1315,7 +1317,7 @@ _nx_command() {
     ;;
     (s|serve)
       # Use dynamic parsing combined with workspace executor options
-      local -a serve_opts=($(_nx_get_command_options "serve"))
+      local -a serve_opts; _nx_get_command_options serve_opts "serve"
       local -a workspace_opts=($(_nx_get_dynamic_command_options "serve"))
       local -a all_opts=($serve_opts $workspace_opts)
 
@@ -1362,7 +1364,7 @@ _nx_command() {
     ;;
     (show)
       # Use dynamic parsing for show command
-      local -a show_opts=($(_nx_get_command_options "show"))
+      local -a show_opts; _nx_get_command_options show_opts "show"
       if [[ ${#show_opts} -gt 0 ]]; then
         _arguments $(_nx_arguments) \
           $opts_help \
@@ -1378,7 +1380,7 @@ _nx_command() {
     ;;
     (t|test)
       # Use dynamic parsing combined with workspace executor options
-      local -a test_opts=($(_nx_get_command_options "test"))
+      local -a test_opts; _nx_get_command_options test_opts "test"
       local -a workspace_opts=($(_nx_get_dynamic_command_options "test"))
       local -a all_opts=($test_opts $workspace_opts)
 
@@ -1432,7 +1434,7 @@ _nx_command() {
     (*)
       # Generic handler for any unrecognized commands - try dynamic parsing
       local command_name="${words[1]}"
-      local -a dynamic_opts=($(_nx_get_command_options "$command_name"))
+      local -a dynamic_opts; _nx_get_command_options dynamic_opts "$command_name"
       if [[ ${#dynamic_opts} -gt 0 ]]; then
         _arguments $(_nx_arguments) \
           $opts_help \
